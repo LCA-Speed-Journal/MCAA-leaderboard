@@ -1,0 +1,125 @@
+# Research: Conference Track & Field Leaderboard
+
+**Project:** Conference-level leaderboard web app aggregating marks from athletic.net Team Summary pages for known conference schools. Per-event leaderboards (men's/women's), viewable by PR or by average of last 3 marks; 2–3x weekly refresh.
+
+**Target Users:** Coaches (rostering, depth analysis) and athletes (conference rank, benchmarks: section qual, state qual, conference-podium average).
+
+**Budget:** Free only. **Timeline:** ~8 weeks (ideally week of first meet).
+
+---
+
+## 1. Market Analysis
+
+**Competitors & gap**
+- **Athletic.net:** Section-level leaderboards and filters; no conference-level filter. Team Summary pages exist per school (marks by athlete, event, grade, gender) but are not aggregated across a custom set of schools.
+- **MileSplit:** Comparable data often behind paywall; not viable for free-only.
+- **Current workaround:** Manual spreadsheets before conference meet (labor-intensive).
+
+**Opportunity:** A free, conference-scoped tool that automates the manual spreadsheet workflow and gives coaches and athletes a single place to see conference standings and benchmarks. No direct free competitor at conference granularity.
+
+**Market size:** Niche (high school/conference T&F). Value is high for your program and could be reused or shared with other conferences.
+
+---
+
+## 2. Technical Recommendations
+
+**Scraping (responsible)**
+- **Respect robots.txt and Terms of Service:** Check athletic.net’s robots.txt and ToS before scraping; you indicated data use “shouldn’t be a problem,” but confirm.
+- **Rate limiting / politeness:** Use 1 request every 10–15 seconds for small/medium sites; or 1–3 second delays between requests. Randomize intervals (e.g. 1–3 s) to mimic human browsing. Prefer off-peak hours to reduce load.
+- **Exponential backoff:** On 4xx/5xx or rate-limit responses, back off and retry with increasing delay.
+- **User-Agent:** Identify the crawler clearly (e.g. “ConferenceLeaderboard/1.0 (school use; contact email)”).
+- **Scope:** Only hit Team Summary URLs for your known conference school IDs; 2–3x per week keeps request volume low.
+
+**Existing reference:** GitHub projects (e.g. `daveb-501commons/athletic.net-team-data`, `kYpranite/athleticscraper`) use Python + BeautifulSoup to extract team/athlete data from athletic.net. Reuse patterns (URL structure, parsing) but implement your own rate limiting and politeness.
+
+**Stack (free-friendly, matches your background)**
+- **Scraper:** Python (your strength) — BeautifulSoup or similar; if Team Summary is heavily JS-rendered, consider Playwright/Puppeteer only if necessary (adds complexity and runtime).
+- **Backend/API:** Either (a) Python (e.g. FastAPI/Flask) for scrape + API, or (b) Node/TypeScript on Vercel to align with your other app; scraping can still be Python if run as a separate job.
+- **Frontend:** TypeScript/React (you’ve used with Vercel); responsive so it works on desktop and mobile.
+- **Database:** PostgreSQL on free tier (e.g. Supabase) for schools, athletes, marks, events, and snapshot/refresh metadata.
+- **Refresh scheduling:** See “Tool recommendations” below — Vercel free cron is once per day only, so 2–3x weekly needs another trigger.
+
+---
+
+## 3. Tool Recommendations (Free Tier)
+
+**Database + scheduled jobs**
+- **Supabase (free):** PostgreSQL, 2 free projects, 1 GB storage, 5 GB egress. Built-in **pg_cron** for recurring jobs (e.g. 2–3x per week). Jobs can run SQL, DB functions, or HTTP requests (e.g. call your scrape endpoint). Max 8 concurrent jobs; each run should stay under ~10 minutes. Fits “free only” and “efficient refresh.”
+- **Alternatives:** Aiven free PostgreSQL (1 GB, 1 CPU) if you only need DB and will trigger scrape elsewhere (e.g. external cron).
+
+**Hosting**
+- **Vercel (Hobby):** Good for frontend and serverless API. **Cron on Hobby is once per day only** and roughly hourly precision; not enough for “2–3x weekly” with multiple run times. Use Vercel for the app and a separate mechanism for scheduling (e.g. Supabase cron calling a Vercel API route, or an external cron service hitting your API).
+- **External cron (free):** Services like cron-job.org can hit a protected API route on a schedule (e.g. Mon/Wed/Fri). Combine with Vercel serverless function that runs the scrape (or triggers a worker). Keep the route secured (e.g. secret token in header) so only your cron can call it.
+
+**Scraping**
+- **Python:** `requests` + `beautifulsoup4` (and optionally `lxml`). No cost. Run in a serverless function (e.g. Vercel serverless with a Python runtime or a small Node wrapper that shells to Python) or in a Supabase Edge Function / external job. For many schools, consider chunking (e.g. scrape N schools per run) so each run stays within timeout limits.
+
+---
+
+## 4. Efficient Storage and Refresh
+
+**Data model (conceptual)**
+- **Schools:** id, athletic_net_team_id, name, conference_id.
+- **Athletes:** id, school_id, name, grade, gender, athletic_net_id (if available).
+- **Events:** id, name, discipline (e.g. track vs field), unit (time vs distance), “better” direction (lower vs higher).
+- **Marks:** athlete_id, event_id, mark value, unit, date, meet (optional), source_url. Store each mark so you can compute PR and “average of last 3” per athlete per event.
+- **Refresh metadata:** last_run_at, status, schools_processed (or last_successful_run per school).
+
+**Refresh strategy**
+- **Incremental-friendly:** Use “last scraped date” or “last run” per school; optionally only append new marks (cursor = max date per athlete/event) to avoid re-processing unchanged data.
+- **Deduplication:** Unique key on (athlete_id, event_id, date, meet or mark_value) to avoid duplicates when re-scraping.
+- **PR and “avg of last 3”:** Compute in DB or in API: PR = best mark per athlete/event in season; avg of last 3 = average of 3 most recent marks (by date) per athlete/event. Store as derived tables or views refreshed after each scrape run.
+- **Full refresh option:** Keep ability to truncate and re-scrape when schema or logic changes.
+
+**2–3x weekly:** Run full scrape (or per-school incremental) Mon/Wed/Fri (or similar). Supabase cron can trigger an HTTP request to your Vercel (or other) scrape endpoint; or use an external cron service.
+
+---
+
+## 5. MVP Feature Prioritization
+
+**Must-have for launch**
+1. Config: List of conference school athletic.net team IDs (and names).
+2. Scraper: Fetch Team Summary (men’s/women’s) per school; parse athletes, events, marks, grade, gender.
+3. Storage: Persist schools, athletes, events, marks; run 2–3x per week.
+4. Leaderboard UI: Per-event, split men’s/women’s; view by **PR** or by **average of last 3**.
+5. Benchmarks: Display section qual, state qual, conference-podium average (configurable values) next to rankings so athletes see distance to benchmarks.
+
+**Nice-to-have later**
+- Filter by grade.
+- “Our team” vs “conference” highlighting.
+- Export to CSV for coaches.
+- Historical snapshots (e.g. “as of last week”).
+
+---
+
+## 6. Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Athletic.net structure changes | Parse defensively; keep scraper in one place; add simple tests (e.g. sample HTML). |
+| Rate limiting / IP block | Strict rate limits (10–15 s between requests); off-peak; identifiable User-Agent; small number of schools. |
+| Vercel/serverless timeouts | Chunk work (e.g. scrape 2–3 schools per invocation); or run scraper in a longer-lived job (e.g. Supabase Edge or external worker) and only use Vercel for API that reads from DB. |
+| Free tier limits | Supabase: stay under 1 GB and 5 GB egress. Vercel: stay within Hobby limits. Monitor usage as you add schools. |
+| ToS / legality | Confirm athletic.net ToS and robots.txt; use data only for internal/school use; no redistribution of raw data. |
+
+---
+
+## 7. Cost Estimates
+
+- **Development:** Your time; no tool cost if you use free tiers.
+- **Running (free-only):** $0 — Supabase free (DB + cron), Vercel Hobby (app + API), optional free external cron. No paid scraping or database services required for MVP.
+- **If you outgrow free:** Supabase Pro, or paid cron/worker, only if you add many conferences or heavy usage.
+
+---
+
+## 8. Next Steps
+
+1. **Confirm athletic.net:** Check robots.txt and ToS; inspect Team Summary page HTML (or use existing GitHub scrapers) to lock URL pattern and selectors.
+2. **Define conference:** List athletic.net team IDs and names for all conference schools; decide season year (e.g. 2026).
+3. **Scraper MVP:** Python script that, for one school, fetches men’s and women’s Team Summary, parses to structured records (athlete, event, mark, date, grade, gender); add rate limiting and polite delays.
+4. **Database:** Create Supabase project; schema for schools, athletes, events, marks, refresh metadata; optional view/functions for PR and “avg of last 3.”
+5. **Refresh pipeline:** Supabase cron (or external cron) calling an endpoint that runs the scraper and writes to DB 2–3x per week.
+6. **API + frontend:** Vercel app (TypeScript/React) that reads from Supabase and displays per-event leaderboards (PR or avg of last 3), with benchmark lines.
+7. **Benchmarks:** Add config (e.g. in DB or env) for section qual, state qual, conference-podium average per event; surface in UI.
+
+After this, run **/vibe-prd** (or ask for a PRD) to turn this into a Product Requirements Document, then technical design and implementation.

@@ -1,0 +1,24 @@
+# Cursor Rules for MCAA Conference Leaderboard
+
+## Project Context
+**App:** MCAA Conference Leaderboard  
+**Stack:** TypeScript/React (Vite or Next.js) on Vercel, Neon PostgreSQL, Python scraper (BeautifulSoup + requests), external cron  
+**Stage:** MVP Development  
+
+## Directives
+1. **Read AGENTS.md first** — Current phase, roadmap, and "What NOT To Do" live there.
+2. **Refer to agent_docs/ for details** — tech_stack.md, code_patterns.md, project_brief.md, product_requirements.md, testing.md.
+3. **Plan before coding** — Propose approach (e.g. schema → scraper → API → UI); get approval then implement.
+4. **Build incrementally** — One feature at a time; verify (tests or manual check) before moving on.
+5. **Test frequently** — Especially scraper parsing and API response shape; use sample HTML for scraper tests.
+
+## Commands
+- `npm run dev` — Start dev server
+- `npm run build` — Production build
+- `npm test` — Run tests (when added)
+- Scraper: run with `DATABASE_URL` set (e.g. `python scraper/run.py`)
+
+## Conventions
+- DB: parameterized queries only; migrations for schema changes.
+- Scraper: rate limit 10–15 s between schools; clear User-Agent; defensive parsing.
+- API: GET /api/leaderboard (event, gender, mode); POST /api/refresh with Bearer REFRESH_SECRET.
