@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { MarkTooltip } from "./MarkTooltip";
 
 const GRADES = [7, 8, 9, 10, 11, 12] as const;
@@ -60,10 +60,11 @@ function gradesFromSearchParams(searchParams: ReturnType<typeof useSearchParams>
     .filter((g) => g >= 7 && g <= 12);
 }
 
-export default function LeaderboardPage() {
+function LeaderboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const grades = gradesFromSearchParams(searchParams);
+  const gradesParam = grades.length > 0 ? grades.join(",") : "";
 
   const toggleGrade = (g: number) => {
     const next = grades.includes(g)
@@ -150,7 +151,7 @@ export default function LeaderboardPage() {
 
     const leaderboardUrl =
       `/api/leaderboard?event=${encodeURIComponent(eventSlug)}&gender=${gender}&mode=${mode}` +
-      (grades.length > 0 ? `&grades=${grades.join(",")}` : "");
+      (gradesParam ? `&grades=${gradesParam}` : "");
 
     Promise.all([
       fetch(leaderboardUrl, { cache: "no-store" }).then((r) =>
@@ -175,7 +176,7 @@ export default function LeaderboardPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load leaderboard"))
       .finally(() => setLoading(false));
-  }, [eventSlug, gender, mode, grades.length, grades.join(",")]);
+  }, [eventSlug, gender, mode, gradesParam]);
 
   const currentEvent = events.find((e) => e.slug === eventSlug);
   const unit = currentEvent?.unit ?? "time";
@@ -433,5 +434,19 @@ export default function LeaderboardPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LeaderboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gray-100 p-4 md:p-8 flex items-center justify-center">
+          <p className="text-gray-500">Loading…</p>
+        </main>
+      }
+    >
+      <LeaderboardContent />
+    </Suspense>
   );
 }
