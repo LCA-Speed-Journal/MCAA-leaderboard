@@ -7,6 +7,22 @@ type Mode = "pr" | "avg3";
 type Gender = "men" | "women";
 
 const genderMap: Record<Gender, string> = { men: "M", women: "F" };
+const RELAY_SLUGS = ["4x100", "4x200", "4x400", "4x800"];
+
+/** Correct values that were stored as feet instead of meters (e.g. 12 for HJ). Only convert when value is above plausible meters. */
+function sanitizeDistanceValue(slug: string, value: number): number {
+  const v = Number(value);
+  if (slug === "hj" || slug === "pv") {
+    if (v > 2.5 && v < 10) return v * 0.3048; // feet -> meters
+  }
+  if (slug === "lj") {
+    if (v > 9.5) return v * 0.3048; // plausible LJ meters ≤ ~9m; 10+ likely feet
+  }
+  if (slug === "tj") {
+    if (v > 16) return v * 0.3048; // plausible TJ meters ≤ ~16m; 17+ likely feet
+  }
+  return v;
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -35,13 +51,40 @@ export async function GET(request: NextRequest) {
 
   const genderChar = genderMap[gender];
   const sql = getSql();
+  const isRelay = RELAY_SLUGS.includes(eventSlug);
 
   try {
+    if (mode === "pr" && isRelay) {
+      const rows = await sql`
+        WITH school_best AS (
+          SELECT s.id, s.name AS school_name, MIN(m.value) AS value
+          FROM marks m
+          JOIN athletes a ON a.id = m.athlete_id
+          JOIN schools s ON s.id = a.school_id
+          JOIN events e ON e.id = m.event_id
+          WHERE e.slug = ${eventSlug}
+            AND a.gender = ${genderChar}
+          GROUP BY s.id, s.name
+        )
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY value ASC NULLS LAST)::int AS rank,
+          'Relay' AS athlete_name,
+          school_name,
+          value
+        FROM school_best
+        ORDER BY rank
+      `;
+      return NextResponse.json(
+        { mode: "pr", rows },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
+
     if (mode === "pr") {
       const rows = await sql`
         WITH best_marks AS (
           SELECT
-            a.id AS athlete_id,
+            s.id AS school_id,
             a.name AS athlete_name,
             s.name AS school_name,
             e.better_direction,
@@ -55,7 +98,8 @@ export async function GET(request: NextRequest) {
           JOIN events e ON e.id = m.event_id
           WHERE e.slug = ${eventSlug}
             AND a.gender = ${genderChar}
-          GROUP BY a.id, a.name, s.name, e.better_direction
+            AND a.name != 'Relay Team'
+          GROUP BY s.id, s.name, a.name, e.better_direction
         )
         SELECT
           ROW_NUMBER() OVER (
@@ -70,7 +114,49 @@ export async function GET(request: NextRequest) {
         FROM best_marks
         ORDER BY rank
       `;
-      return NextResponse.json({ mode: "pr", rows });
+      const sanitized = (rows as { rank: number; athlete_name: string; school_name: string; value: number }[]).map(
+        (r) => ({ ...r, value: sanitizeDistanceValue(eventSlug, r.value) })
+      );
+      return NextResponse.json(
+        { mode: "pr", rows: sanitized },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
+
+    if (mode === "avg3" && isRelay) {
+      const rows = await sql`
+        WITH school_performances AS (
+          SELECT DISTINCT s.id, s.name AS school_name, m.mark_date, m.value
+          FROM marks m
+          JOIN athletes a ON a.id = m.athlete_id
+          JOIN schools s ON s.id = a.school_id
+          JOIN events e ON e.id = m.event_id
+          WHERE e.slug = ${eventSlug}
+            AND a.gender = ${genderChar}
+        ),
+        ranked AS (
+          SELECT id, school_name, value,
+            ROW_NUMBER() OVER (PARTITION BY id ORDER BY mark_date DESC NULLS LAST) AS rn
+          FROM school_performances
+        ),
+        last_three AS (
+          SELECT id, school_name, AVG(value) AS value
+          FROM ranked
+          WHERE rn <= 3
+          GROUP BY id, school_name
+        )
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY value ASC NULLS LAST)::int AS rank,
+          'Relay' AS athlete_name,
+          school_name,
+          ROUND(value::numeric, 2) AS value
+        FROM last_three
+        ORDER BY rank
+      `;
+      return NextResponse.json(
+        { mode: "avg3", rows },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
     }
 
     const rows = await sql`
@@ -84,6 +170,7 @@ export async function GET(request: NextRequest) {
         JOIN events e ON e.id = m.event_id
         WHERE e.slug = ${eventSlug}
           AND a.gender = ${genderChar}
+          AND a.name != 'Relay Team'
       ),
       avg_marks AS (
         SELECT
@@ -98,12 +185,19 @@ export async function GET(request: NextRequest) {
         SELECT
           a.name AS athlete_name,
           s.name AS school_name,
+          s.id AS school_id,
           e.better_direction,
           am.value
         FROM avg_marks am
         JOIN athletes a ON a.id = am.athlete_id
         JOIN schools s ON s.id = a.school_id
         JOIN events e ON e.slug = ${eventSlug}
+      ),
+      best_per_athlete AS (
+        SELECT athlete_name, school_name, better_direction,
+          CASE WHEN better_direction = 'lower' THEN MIN(value) ELSE MAX(value) END AS value
+        FROM with_school
+        GROUP BY school_id, athlete_name, school_name, better_direction
       )
       SELECT
         ROW_NUMBER() OVER (
@@ -115,10 +209,16 @@ export async function GET(request: NextRequest) {
         athlete_name,
         school_name,
         ROUND(value::numeric, 2) AS value
-      FROM with_school
+      FROM best_per_athlete
       ORDER BY rank
     `;
-    return NextResponse.json({ mode: "avg3", rows });
+    const sanitized = (rows as { rank: number; athlete_name: string; school_name: string; value: number }[]).map(
+      (r) => ({ ...r, value: sanitizeDistanceValue(eventSlug, r.value) })
+    );
+    return NextResponse.json(
+      { mode: "avg3", rows: sanitized },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (err) {
     console.error("Leaderboard API error:", err);
     return NextResponse.json(

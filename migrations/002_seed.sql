@@ -6,14 +6,20 @@ INSERT INTO conferences (id, name, season_year) VALUES
   (1, 'MCAA', 2026)
 ON CONFLICT (id) DO NOTHING;
 
--- Placeholder schools (replace athletic_net_team_id with real athletic.net team IDs)
+-- MCAA conference schools (athletic.net team IDs)
 INSERT INTO schools (conference_id, athletic_net_team_id, name) VALUES
-  (1, 'PLACEHOLDER_1', 'School A'),
-  (1, 'PLACEHOLDER_2', 'School B'),
-  (1, 'PLACEHOLDER_3', 'School C')
+  (1, '73442', 'Liberty Classical Academy'),
+  (1, '12529', 'Eagle Ridge Academy'),
+  (1, '12207', 'Christ''s Household of Faith'),
+  (1, '12079', 'Math & Science Academy'),
+  (1, '12454', 'Mayer Lutheran'),
+  (1, '34824', 'NLA/LILA'),
+  (1, '75792', 'Parnassus Preparatory Academy'),
+  (1, '38174', 'Spectrum High School'),
+  (1, '12356', 'West Lutheran')
 ON CONFLICT (conference_id, athletic_net_team_id) DO NOTHING;
 
--- Common track & field events (slug used in API)
+-- Events: finalized list (matches production; ids may differ on fresh install)
 INSERT INTO events (name, slug, discipline, better_direction, unit) VALUES
   ('100m', '100m', 'track', 'lower', 'time'),
   ('200m', '200m', 'track', 'lower', 'time'),
@@ -22,13 +28,19 @@ INSERT INTO events (name, slug, discipline, better_direction, unit) VALUES
   ('1600m', '1600m', 'track', 'lower', 'time'),
   ('3200m', '3200m', 'track', 'lower', 'time'),
   ('110m Hurdles', '110h', 'track', 'lower', 'time'),
+  ('100m Hurdles', '100h', 'track', 'lower', 'time'),
   ('300m Hurdles', '300h', 'track', 'lower', 'time'),
+  ('4x100m Relay', '4x100', 'track', 'lower', 'time'),
+  ('4x200m Relay', '4x200', 'track', 'lower', 'time'),
+  ('4x400m Relay', '4x400', 'track', 'lower', 'time'),
   ('High Jump', 'hj', 'field', 'higher', 'distance'),
   ('Long Jump', 'lj', 'field', 'higher', 'distance'),
   ('Triple Jump', 'tj', 'field', 'higher', 'distance'),
   ('Shot Put', 'sp', 'field', 'higher', 'distance'),
   ('Discus', 'discus', 'field', 'higher', 'distance'),
-  ('Pole Vault', 'pv', 'field', 'higher', 'distance')
+  ('Pole Vault', 'pv', 'field', 'higher', 'distance'),
+  ('60m Hurdles', '60h', 'track', 'lower', 'time'),
+  ('4x800m Relay', '4x800', 'track', 'lower', 'time')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Benchmarks: optional placeholder values (NULL = not set)

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type EventRow = { id: number; name: string; slug: string; discipline: string };
+type EventRow = { id: number; name: string; slug: string; discipline: string; unit: string };
 type LeaderboardRow = { rank: number; athlete_name: string; school_name: string; value: number };
 type Benchmarks = {
   slug: string;
@@ -10,6 +10,15 @@ type Benchmarks = {
   state_qual: number | null;
   conference_podium_avg: number | null;
 };
+
+const EVENT_GROUPS: { label: string; slugs: string[] }[] = [
+  { label: "Sprints", slugs: ["100m", "200m", "400m"] },
+  { label: "Distance", slugs: ["800m", "1600m", "3200m"] },
+  { label: "Hurdles", slugs: ["100h", "110h", "300h", "60h"] },
+  { label: "Relays", slugs: ["4x100", "4x200", "4x400", "4x800"] },
+  { label: "Jumps", slugs: ["lj", "tj", "hj", "pv"] },
+  { label: "Throws", slugs: ["sp", "discus"] },
+];
 
 export default function LeaderboardPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -27,7 +36,11 @@ export default function LeaderboardPage() {
       .then((data) => {
         if (data.events?.length) {
           setEvents(data.events);
-          setEventSlug((prev) => prev || data.events[0].slug);
+          const bySlug = Object.fromEntries(data.events.map((e: EventRow) => [e.slug, e]));
+          const firstSlug =
+            EVENT_GROUPS.flatMap((g) => g.slugs).find((s) => bySlug[s]) ??
+            data.events[0].slug;
+          setEventSlug((prev) => prev || firstSlug);
         }
       })
       .catch(() => setError("Failed to load events"));
@@ -40,11 +53,12 @@ export default function LeaderboardPage() {
     setError(null);
     Promise.all([
       fetch(
-        `/api/leaderboard?event=${encodeURIComponent(eventSlug)}&gender=${gender}&mode=${mode}`
+        `/api/leaderboard?event=${encodeURIComponent(eventSlug)}&gender=${gender}&mode=${mode}`,
+        { cache: "no-store" }
       ).then((r) => r.json()),
-      fetch(`/api/benchmarks?event=${encodeURIComponent(eventSlug)}`).then((r) =>
-        r.json()
-      ),
+      fetch(`/api/benchmarks?event=${encodeURIComponent(eventSlug)}`, {
+        cache: "no-store",
+      }).then((r) => r.json()),
     ])
       .then(([lb, b]) => {
         if (lb.error) throw new Error(lb.error);
@@ -57,10 +71,32 @@ export default function LeaderboardPage() {
   }, [eventSlug, gender, mode]);
 
   const currentEvent = events.find((e) => e.slug === eventSlug);
-  const unit = currentEvent?.slug ? (currentEvent.slug.includes("m") || currentEvent.slug === "110h" || currentEvent.slug === "300h" ? "time" : "distance") : "time";
+  const unit = currentEvent?.unit ?? "time";
+  const slug = currentEvent?.slug ?? "";
 
-  const formatValue = (v: number) =>
-    unit === "time" ? formatTime(v) : `${Number(v).toFixed(2)}m`;
+  const eventsBySlug = Object.fromEntries(events.map((e) => [e.slug, e]));
+  const groupedEvents = EVENT_GROUPS.map(({ label, slugs }) => ({
+    label,
+    events: slugs
+      .map((s) => eventsBySlug[s])
+      .filter((e): e is EventRow => e != null),
+  })).filter((g) => g.events.length > 0);
+
+  const FEET_INCHES_SLUGS = ["hj", "lj", "tj", "pv", "sp", "discus"];
+
+  const formatValue = (v: number) => {
+    if (unit === "time") return formatTime(v);
+    if (FEET_INCHES_SLUGS.includes(slug)) return formatFeetInches(v);
+    return `${Number(v).toFixed(2)}m`;
+  };
+
+  function formatFeetInches(meters: number): string {
+    const totalInches = Number(meters) / 0.0254;
+    const feet = Math.floor(totalInches / 12);
+    const rem = totalInches % 12;
+    const inchesStr = rem % 1 === 0 ? String(Math.round(rem)) : rem.toFixed(1);
+    return `${feet}'${inchesStr}"`;
+  }
 
   function formatTime(seconds: number) {
     const n = Number(seconds);
@@ -90,10 +126,14 @@ export default function LeaderboardPage() {
               value={eventSlug}
               onChange={(e) => setEventSlug(e.target.value)}
             >
-              {events.map((e) => (
-                <option key={e.id} value={e.slug}>
-                  {e.name}
-                </option>
+              {groupedEvents.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.events.map((e) => (
+                    <option key={e.id} value={e.slug}>
+                      {e.name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -189,8 +229,8 @@ export default function LeaderboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {rows.map((r) => (
-                  <tr key={`${r.rank}-${r.athlete_name}-${r.school_name}`}>
+                {rows.map((r, i) => (
+                  <tr key={`${r.rank}-${r.athlete_name}-${r.school_name}-${r.value}-${i}`}>
                     <td className="px-4 py-2 text-sm">{r.rank}</td>
                     <td className="px-4 py-2 text-sm">{r.athlete_name}</td>
                     <td className="px-4 py-2 text-sm">{r.school_name}</td>
@@ -204,7 +244,7 @@ export default function LeaderboardPage() {
           )}
           {!loading && rows.length === 0 && !error && (
             <p className="mt-2 text-gray-500">
-              No marks yet. Run the scraper to load data.
+              No marks for this event. Load data with the scraper (e.g. sync_school or load_fixture).
             </p>
           )}
         </div>

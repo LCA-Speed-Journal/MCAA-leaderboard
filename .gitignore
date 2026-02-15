@@ -40,3 +40,6 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# scraper fixtures (large saved HTML; regenerate with fetch_rendered_html or sync_conference)
+/scraper/fixtures/

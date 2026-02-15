@@ -29,7 +29,7 @@ Load only when needed:
 ## Current State
 **Last Updated:** 2026-02-13  
 **Working On:** Phase 3 (refresh endpoint, error handling, mobile polish)  
-**Recently Completed:** Phase 1 (Next.js, migrations, seed); Phase 2 (scraper stub, leaderboard API, leaderboard UI, benchmarks API, refresh API)  
+**Recently Completed:** Leaderboard visualization verified with Liberty subset; table row keys hardened (rank+name+school+value+index); empty-state copy clarified; `npm run build` passes  
 **Blocked By:** None  
 
 ## Roadmap
@@ -41,7 +41,7 @@ Load only when needed:
 
 ### Phase 2: Core Features
 - [x] Conference config: schools table + seed data (optional UI skipped for v1).
-- [x] Scraper + storage: Python scraper in `/scraper`; rate limit 12 s; scrape_runs; parse_team_summary placeholder (wire real selectors from sample HTML).
+- [x] Scraper + storage: Python scraper in `/scraper`; rate limit 12 s; scrape_runs; parse_team_summary supports athletic.net Angular layout (div.athlete + event-header + table per event). Use fetch_rendered_html.py then load_fixture.py to populate DB (requests gets shell only).
 - [x] Leaderboard API: GET /api/leaderboard (event, gender, mode=pr|avg3); GET /api/events; GET /api/benchmarks.
 - [x] Leaderboard UI: event/gender selector; table (rank, athlete, school, mark); toggle PR vs avg of last 3.
 - [x] Benchmarks: configurable per event; show alongside leaderboard.
