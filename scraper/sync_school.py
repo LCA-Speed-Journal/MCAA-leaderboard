@@ -8,7 +8,7 @@ Usage (from project root; DATABASE_URL in .env.local):
 
 Example (Liberty Classical Academy, athletic.net team 73442, school_id 1):
   python scraper/sync_school.py 73442 1
-  python scraper/sync_school.py 73442 1 --year 2025
+  python scraper/sync_school.py 73442 1 --year 2026
 
 Requires: pip install playwright && python -m playwright install chromium
 """
@@ -36,7 +36,7 @@ def main():
     )
     parser.add_argument("team_id", help="athletic.net team ID (e.g. 73442)")
     parser.add_argument("school_id", type=int, help="school id in your schools table")
-    parser.add_argument("--year", default="2025", help="season year (default: 2025)")
+    parser.add_argument("--year", default="2026", help="season year (default: 2026)")
     parser.add_argument(
         "--no-save-fixtures",
         action="store_true",

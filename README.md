@@ -24,24 +24,27 @@ Athletic.net’s team summary is JS-rendered, so:
 1. **Fetch rendered HTML** (once per team/year; page has Men / Women / Relays tabs):  
    `python scraper/fetch_rendered_html.py <team_id> <year> [view]`  
    Examples:  
-   - Men: `python scraper/fetch_rendered_html.py 73442 2025` → `team_summary_73442_2025.html`  
-   - Women: `python scraper/fetch_rendered_html.py 73442 2025 women` → `team_summary_73442_2025_women.html`  
-   - Relays: `python scraper/fetch_rendered_html.py 73442 2025 relays` → `team_summary_73442_2025_relays.html`  
-   - All: `python scraper/fetch_rendered_html.py 73442 2025 all`
+   - Men: `python scraper/fetch_rendered_html.py 73442 2026` → `team_summary_73442_2026.html`  
+   - Women: `python scraper/fetch_rendered_html.py 73442 2026 women` → `team_summary_73442_2026_women.html`  
+   - Relays: `python scraper/fetch_rendered_html.py 73442 2026 relays` → `team_summary_73442_2026_relays.html`  
+   - All: `python scraper/fetch_rendered_html.py 73442 2026 all`
 
 2. **Add the school in the DB** if needed (e.g. in Neon SQL):  
    `INSERT INTO schools (conference_id, athletic_net_team_id, name) VALUES (1, '73442', 'Liberty Classical Academy') ON CONFLICT (conference_id, athletic_net_team_id) DO NOTHING;`
 
 3. **Load HTML into the DB** (when using pre-saved fixtures; run once per gender):  
-   `python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025.html 1 men`  
-   `python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025_women.html 1 women`  
+   `python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026.html 1 men`  
+   `python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026_women.html 1 women`  
    Use the correct `school_id` from your `schools` table.
 
 4. **One school (fetch + load in one go):**  
-   `python scraper/sync_school.py <team_id> <school_id> [--year 2025]`  
+   `python scraper/sync_school.py <team_id> <school_id> [--year 2026]`  
    Example: `python scraper/sync_school.py 73442 1`  
    Uses Playwright to fetch Men, Women, and Relays, then parses and upserts. Optional `--no-save-fixtures` to skip writing HTML files.
 
 5. **All schools in the conference:**  
-   `python scraper/sync_conference.py [--year 2025] [--conference-id 1]`  
+   `python scraper/sync_conference.py [--year 2026] [--conference-id 1]`  
    Reads schools from the DB (skips rows where `athletic_net_team_id` starts with `PLACEHOLDER`), then for each school runs the same fetch+parse+upsert as sync_school. Waits 12s between schools. Add real athletic.net team IDs to your `schools` table first, then run this once to scrape every team.
+
+6. **New season (drop last year’s marks from Neon):**  
+   The leaderboard reads every row in `marks`, so last season’s dated performances stay until removed. Before loading the new year, run `python scraper/clear_marks_before_year.py --year 2026` (or `psql $DATABASE_URL -f migrations/006_delete_marks_before_2026.sql`), then `python scraper/sync_conference.py --year 2026` to refill. Rows with no `mark_date` are left unchanged.

@@ -9,7 +9,7 @@ Usage (from project root; DATABASE_URL in .env.local):
 
 Example:
   python scraper/sync_conference.py
-  python scraper/sync_conference.py --year 2025 --gender men
+  python scraper/sync_conference.py --year 2026 --gender men
   python scraper/sync_conference.py --gender women --no-save-fixtures
 
 Requires: pip install playwright && python -m playwright install chromium
@@ -37,7 +37,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch and load all marks for every school in the conference (Playwright)."
     )
-    parser.add_argument("--year", default="2025", help="season year (default: 2025)")
+    parser.add_argument("--year", default="2026", help="season year (default: 2026)")
     parser.add_argument("--conference-id", type=int, default=1, help="conference id (default: 1)")
     parser.add_argument(
         "--gender",

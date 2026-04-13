@@ -4,7 +4,7 @@ Inspect event headers and slug resolution in team-summary HTML.
 Use to compare Liberty vs other schools when some events fail to parse.
 
 Usage: python scraper/inspect_event_headers.py <path_to.html>
-Example: python scraper/inspect_event_headers.py scraper/fixtures/team_summary_12207_2025.html
+Example: python scraper/inspect_event_headers.py scraper/fixtures/team_summary_12207_2026.html
 """
 import sys
 from pathlib import Path

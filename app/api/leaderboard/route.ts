@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSql } from "@/lib/db";
+import {
+  MARK_SEASON_END_EXCLUSIVE,
+  MARK_SEASON_START,
+} from "@/lib/leaderboardSeason";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +82,8 @@ export async function GET(request: NextRequest) {
               WHERE e.slug = ${eventSlug}
                 AND a.gender = ${genderChar}
                 AND a.grade = ANY((${useGradeFilter})::int[])
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
               ORDER BY s.id, m.value ASC NULLS LAST
             )
             SELECT
@@ -106,6 +112,8 @@ export async function GET(request: NextRequest) {
               JOIN events e ON e.id = m.event_id
               WHERE e.slug = ${eventSlug}
                 AND a.gender = ${genderChar}
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
               ORDER BY s.id, m.value ASC NULLS LAST
             )
             SELECT
@@ -130,7 +138,7 @@ export async function GET(request: NextRequest) {
       const rows = useGradeFilter
         ? await sql`
             WITH best_row AS (
-              SELECT DISTINCT ON (a.id)
+              SELECT DISTINCT ON (a.school_id, lower(trim(a.name)), a.gender)
                 a.name AS athlete_name,
                 s.name AS school_name,
                 s.id AS school_id,
@@ -147,7 +155,10 @@ export async function GET(request: NextRequest) {
                 AND a.gender = ${genderChar}
                 AND a.name != 'Relay Team'
                 AND a.grade = ANY((${useGradeFilter})::int[])
-              ORDER BY a.id,
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
+              ORDER BY a.school_id, lower(trim(a.name)), a.gender,
+                CASE WHEN a.grade IS NULL THEN 1 ELSE 0 END ASC,
                 CASE WHEN e.better_direction = 'lower' THEN m.value END ASC NULLS LAST,
                 CASE WHEN e.better_direction = 'higher' THEN m.value END DESC NULLS LAST,
                 m.mark_date DESC NULLS LAST
@@ -171,7 +182,7 @@ export async function GET(request: NextRequest) {
           `
         : await sql`
             WITH best_row AS (
-              SELECT DISTINCT ON (a.id)
+              SELECT DISTINCT ON (a.school_id, lower(trim(a.name)), a.gender)
                 a.name AS athlete_name,
                 s.name AS school_name,
                 s.id AS school_id,
@@ -187,7 +198,10 @@ export async function GET(request: NextRequest) {
               WHERE e.slug = ${eventSlug}
                 AND a.gender = ${genderChar}
                 AND a.name != 'Relay Team'
-              ORDER BY a.id,
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
+              ORDER BY a.school_id, lower(trim(a.name)), a.gender,
+                CASE WHEN a.grade IS NULL THEN 1 ELSE 0 END ASC,
                 CASE WHEN e.better_direction = 'lower' THEN m.value END ASC NULLS LAST,
                 CASE WHEN e.better_direction = 'higher' THEN m.value END DESC NULLS LAST,
                 m.mark_date DESC NULLS LAST
@@ -230,6 +244,8 @@ export async function GET(request: NextRequest) {
               WHERE e.slug = ${eventSlug}
                 AND a.gender = ${genderChar}
                 AND a.grade = ANY((${useGradeFilter})::int[])
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
             ),
             ranked AS (
               SELECT id, school_name, mark_date, value,
@@ -266,6 +282,8 @@ export async function GET(request: NextRequest) {
               JOIN events e ON e.id = m.event_id
               WHERE e.slug = ${eventSlug}
                 AND a.gender = ${genderChar}
+                AND m.mark_date >= ${MARK_SEASON_START}::date
+                AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
             ),
             ranked AS (
               SELECT id, school_name, mark_date, value,
@@ -314,6 +332,8 @@ export async function GET(request: NextRequest) {
               AND a.gender = ${genderChar}
               AND a.name != 'Relay Team'
               AND a.grade = ANY((${useGradeFilter})::int[])
+              AND m.mark_date >= ${MARK_SEASON_START}::date
+              AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
           ),
           avg_marks AS (
             SELECT
@@ -342,12 +362,17 @@ export async function GET(request: NextRequest) {
             JOIN events e ON e.slug = ${eventSlug}
           ),
           best_per_athlete AS (
-            SELECT athlete_name, school_name, school_id, grade, better_direction,
+            SELECT
+              MIN(athlete_name) AS athlete_name,
+              school_name,
+              school_id,
+              MAX(grade) FILTER (WHERE grade IS NOT NULL) AS grade,
+              better_direction,
               CASE WHEN better_direction = 'lower' THEN MIN(value) ELSE MAX(value) END AS value,
               MIN(mark_date_min) AS mark_date_min,
               MAX(mark_date_max) AS mark_date_max
             FROM with_school
-            GROUP BY school_id, athlete_name, school_name, grade, better_direction, mark_date_min, mark_date_max
+            GROUP BY school_id, lower(trim(athlete_name)), school_name, better_direction
           )
           SELECT
             ROW_NUMBER() OVER (
@@ -379,6 +404,8 @@ export async function GET(request: NextRequest) {
             WHERE e.slug = ${eventSlug}
               AND a.gender = ${genderChar}
               AND a.name != 'Relay Team'
+              AND m.mark_date >= ${MARK_SEASON_START}::date
+              AND m.mark_date < ${MARK_SEASON_END_EXCLUSIVE}::date
           ),
           avg_marks AS (
             SELECT
@@ -407,12 +434,17 @@ export async function GET(request: NextRequest) {
             JOIN events e ON e.slug = ${eventSlug}
           ),
           best_per_athlete AS (
-            SELECT athlete_name, school_name, school_id, grade, better_direction,
+            SELECT
+              MIN(athlete_name) AS athlete_name,
+              school_name,
+              school_id,
+              MAX(grade) FILTER (WHERE grade IS NOT NULL) AS grade,
+              better_direction,
               CASE WHEN better_direction = 'lower' THEN MIN(value) ELSE MAX(value) END AS value,
               MIN(mark_date_min) AS mark_date_min,
               MAX(mark_date_max) AS mark_date_max
             FROM with_school
-            GROUP BY school_id, athlete_name, school_name, grade, better_direction, mark_date_min, mark_date_max
+            GROUP BY school_id, lower(trim(athlete_name)), school_name, better_direction
           )
           SELECT
             ROW_NUMBER() OVER (

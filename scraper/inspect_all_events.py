@@ -16,7 +16,7 @@ from run import _event_label_to_slug
 
 
 def main():
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else SCRIPT_DIR / "fixtures" / "team_summary_12207_2025_women.html"
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else SCRIPT_DIR / "fixtures" / "team_summary_12207_2026_women.html"
     html = path.read_text(encoding="utf-8")
     soup = BeautifulSoup(html, "lxml")
     blocks = soup.find_all("div", class_=lambda c: c and "athlete" in (c or "").split())

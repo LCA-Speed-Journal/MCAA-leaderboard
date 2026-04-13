@@ -7,7 +7,7 @@ The page has Men / Women / Relays tabs (default Men). Pass view to fetch the cor
 
 Usage:
   python scraper/fetch_rendered_html.py [team_id] [year] [view]
-  Default: team_id=73442, year=2025, view=men
+  Default: team_id=73442, year=2026, view=men
   view: men | women | relays | all  (all = fetch men, women, and relays; saves three files)
 
 Requires: pip install playwright && python -m playwright install chromium
@@ -53,7 +53,7 @@ def fetch_one(page, url: str, view: str, team_id: str, year: str) -> tuple[str, 
 
 def main():
     team_id = sys.argv[1] if len(sys.argv) > 1 else "73442"
-    year = sys.argv[2] if len(sys.argv) > 2 else "2025"
+    year = sys.argv[2] if len(sys.argv) > 2 else "2026"
     view = (sys.argv[3] if len(sys.argv) > 3 else "men").lower()
     if view not in ("men", "women", "relays", "all"):
         print("view must be: men | women | relays | all")

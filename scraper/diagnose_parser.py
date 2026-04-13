@@ -45,11 +45,11 @@ def main():
 
     from run import parse_team_summary
 
-    # Men's: team_summary_<team_id>_2025.html (no _women, no _relays)
-    men_files = sorted(fixtures_dir.glob("team_summary_*_2025.html"))
+    # Men's: team_summary_<team_id>_2026.html (no _women, no _relays)
+    men_files = sorted(fixtures_dir.glob("team_summary_*_2026.html"))
     men_files = [f for f in men_files if not f.name.endswith("_women.html") and "_relays" not in f.name]
-    # Women's: team_summary_<team_id>_2025_women.html
-    women_files = sorted(fixtures_dir.glob("team_summary_*_2025_women.html"))
+    # Women's: team_summary_<team_id>_2026_women.html
+    women_files = sorted(fixtures_dir.glob("team_summary_*_2026_women.html"))
 
     if not men_files:
         print("No men's fixtures found. Run fetch_rendered_html or sync_conference first.")
@@ -58,8 +58,8 @@ def main():
     print("=== Parser diagnostic: per-school event counts (MEN) ===\n")
 
     for path in men_files:
-        # team_summary_73442_2025.html -> 73442
-        name = path.stem.replace("team_summary_", "").replace("_2025", "")
+        # team_summary_73442_2026.html -> 73442
+        name = path.stem.replace("team_summary_", "").replace("_2026", "")
         team_id = name.split("_")[0] if name else "?"
         label = TEAM_LABELS.get(team_id, team_id)
 
@@ -89,7 +89,7 @@ def main():
     if women_files:
         print("=== Parser diagnostic: per-school event counts (WOMEN) ===\n")
         for path in women_files:
-            name = path.stem.replace("team_summary_", "").replace("_2025_women", "")
+            name = path.stem.replace("team_summary_", "").replace("_2026_women", "")
             team_id = name.split("_")[0] if name else "?"
             label = TEAM_LABELS.get(team_id, team_id)
             with open(path, encoding="utf-8") as f:

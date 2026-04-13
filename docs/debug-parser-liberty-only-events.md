@@ -165,7 +165,7 @@ So either:
 ## Diagnostic Scripts Added
 
 - **`scraper/diagnose_parser.py`** — Parses all men’s and women’s fixtures and prints per-school, per-event mark counts for the focus events. Run from project root: `python scraper/diagnose_parser.py`.
-- **`scraper/inspect_event_headers.py`** — Prints event headers and slug resolution for the first athlete block in a given HTML file. Example: `python scraper/inspect_event_headers.py scraper/fixtures/team_summary_12207_2025.html`.
-- **`scraper/inspect_all_events.py`** — Collects all unique event labels in a fixture and reports mapped vs unmapped. Example: `python scraper/inspect_all_events.py scraper/fixtures/team_summary_12207_2025_women.html`.
+- **`scraper/inspect_event_headers.py`** — Prints event headers and slug resolution for the first athlete block in a given HTML file. Example: `python scraper/inspect_event_headers.py scraper/fixtures/team_summary_12207_2026.html`.
+- **`scraper/inspect_all_events.py`** — Collects all unique event labels in a fixture and reports mapped vs unmapped. Example: `python scraper/inspect_all_events.py scraper/fixtures/team_summary_12207_2026_women.html`.
 
 Use these to compare schools and to validate after any parser or sync changes.

@@ -2,7 +2,7 @@
 """
 Run the parser on a saved HTML file (e.g. from fetch_rendered_html.py or browser "Save as").
 Usage: python scraper/parse_sample.py [path_to.html]
-        If no path given, tries scraper/fixtures/team_summary_73442_2025.html
+        If no path given, tries scraper/fixtures/team_summary_73442_2026.html
 """
 import os
 import sys
@@ -16,10 +16,10 @@ def main():
     if len(sys.argv) > 1:
         path = sys.argv[1]
     else:
-        path = os.path.join(SCRIPT_DIR, "fixtures", "team_summary_73442_2025.html")
+        path = os.path.join(SCRIPT_DIR, "fixtures", "team_summary_73442_2026.html")
     if not os.path.isfile(path):
         print(f"File not found: {path}")
-        print("Run: python scraper/fetch_rendered_html.py 73442 2025")
+        print("Run: python scraper/fetch_rendered_html.py 73442 2026")
         print("  or pass a path to saved team summary HTML.")
         sys.exit(1)
     with open(path, encoding="utf-8") as f:

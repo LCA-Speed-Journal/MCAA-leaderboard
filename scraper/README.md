@@ -25,19 +25,19 @@ cd conference-leaderboard
 python scraper/parse_sample.py "path/to/team-summary.html"
 ```
 
-Without arguments it looks for `scraper/fixtures/team_summary_73442_2025.html`.
+Without arguments it looks for `scraper/fixtures/team_summary_73442_2026.html`.
 
 ### Get rendered HTML (optional)
 
 The live team summary page is built by Angular and has **Men** / **Women** / **Relays** tabs (default Men). To get the full table:
 
-1. **Men only:** `python scraper/fetch_rendered_html.py 73442 2025`  
-   Saves `team_summary_73442_2025.html`
-2. **Women only:** `python scraper/fetch_rendered_html.py 73442 2025 women`  
-   Saves `team_summary_73442_2025_women.html`
-3. **Relays only:** `python scraper/fetch_rendered_html.py 73442 2025 relays`  
-   Saves `team_summary_73442_2025_relays.html` (men’s and women’s relays together on one tab).
-4. **All three:** `python scraper/fetch_rendered_html.py 73442 2025 all`  
+1. **Men only:** `python scraper/fetch_rendered_html.py 73442 2026`  
+   Saves `team_summary_73442_2026.html`
+2. **Women only:** `python scraper/fetch_rendered_html.py 73442 2026 women`  
+   Saves `team_summary_73442_2026_women.html`
+3. **Relays only:** `python scraper/fetch_rendered_html.py 73442 2026 relays`  
+   Saves `team_summary_73442_2026_relays.html` (men’s and women’s relays together on one tab).
+4. **All three:** `python scraper/fetch_rendered_html.py 73442 2026 all`  
    Saves men, women, and relays in one run.
 
 Then run `python scraper/parse_sample.py [path]` to test the parser, or use `load_fixture.py` to push into the DB.
@@ -50,16 +50,16 @@ After saving rendered HTML with `fetch_rendered_html.py`:
 
 ```bash
 # From project root, with DATABASE_URL set
-python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025.html 1 men
-python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025_women.html 1 women
+python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026.html 1 men
+python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026_women.html 1 women
 ```
 
 To include relay marks (4x100, 4x200, 4x400, 4x800), fetch the Relays tab and load it for both genders:
 
 ```bash
-python scraper/fetch_rendered_html.py 73442 2025 relays
-python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025_relays.html 1 men
-python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025_relays.html 1 women
+python scraper/fetch_rendered_html.py 73442 2026 relays
+python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026_relays.html 1 men
+python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026_relays.html 1 women
 ```
 
 Use the `school_id` from your `schools` table (e.g. 1 for Liberty Classical Academy).
@@ -77,7 +77,7 @@ Example (Liberty Classical Academy, athletic.net team 73442, school_id 1):
 
 ```bash
 python scraper/sync_school.py 73442 1
-python scraper/sync_school.py 73442 1 --year 2025
+python scraper/sync_school.py 73442 1 --year 2026
 ```
 
 This opens one browser session, fetches all three tabs (men, women, relays), writes the same three HTML files to `scraper/fixtures/`, then parses and upserts all four datasets (men, women, relays-men, relays-women) with one DB connection. Use `--no-save-fixtures` to skip writing HTML files.

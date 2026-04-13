@@ -7,7 +7,7 @@ Usage (from project root; DATABASE_URL in .env.local):
   python scraper/load_fixture.py <path_to.html> <school_id> <gender>
 
 Example (Liberty Classical Academy, school_id 1, men):
-  python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2025.html 1 men
+  python scraper/load_fixture.py scraper/fixtures/team_summary_73442_2026.html 1 men
 """
 import os
 import sys

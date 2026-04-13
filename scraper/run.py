@@ -7,7 +7,7 @@ Rate limit: 10–15 s between school requests. User-Agent: ConferenceLeaderboard
 import os
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import requests
@@ -32,6 +32,17 @@ except ImportError:
 USER_AGENT = "ConferenceLeaderboard/1.0 (school use; contact for removal)"
 RATE_LIMIT_SEC = 12
 BASE_URL = "https://www.athletic.net/team/{team_id}/track-and-field-outdoor/{year}/team-summary"
+
+# Calendar window stored in Neon / shown on leaderboard (see lib/leaderboardSeason.ts)
+SEASON_MARK_MIN = date(2026, 1, 1)
+SEASON_MARK_MAX_EXCLUSIVE = date(2027, 1, 1)
+
+
+def _mark_in_leaderboard_season(mark_dt) -> bool:
+    """Only persist meets dated inside the leaderboard year (drops prior-season rows from team summary HTML)."""
+    if mark_dt is None:
+        return False
+    return SEASON_MARK_MIN <= mark_dt < SEASON_MARK_MAX_EXCLUSIVE
 
 # Event label (from athletic.net) -> our events.slug (must match events table: 100m–3200m, 110h/100h/300h/60h, 4x100/4x200/4x400/4x800, hj/lj/tj/sp/discus/pv)
 EVENT_TO_SLUG = {
@@ -65,11 +76,13 @@ DISTANCE_SLUGS = {"hj", "lj", "tj", "sp", "discus", "pv"}
 # Max plausible value in meters per event (reject marks above these to avoid wrong-event data)
 DISTANCE_MAX_METERS = {"hj": 2.5, "pv": 2.5, "lj": 9.0, "tj": 16.0, "sp": 25.0, "discus": 70.0}
 # Min plausible (reject place/grade stored as result): shot/discus in meters
-DISTANCE_MIN_METERS = {"sp": 5.0, "discus": 15.0}
+# Floors low enough for MS / 4kg shot and 1kg disc; still rejects stray small integers mis-read as meters
+DISTANCE_MIN_METERS = {"sp": 3.0, "discus": 8.0}
 # Plausible time ranges (seconds) per slug; marks outside are rejected (e.g. place/grade)
 TIME_RANGE_SEC = {
     "110h": (12.0, 30.0), "100h": (12.0, 30.0), "60h": (8.0, 15.0),
-    "300h": (35.0, 55.0), "100m": (9.0, 25.0), "200m": (18.0, 35.0),
+    # Wider ceiling: MS / developing times (e.g. 58s) should not drop the whole row
+    "300h": (35.0, 95.0), "100m": (9.0, 25.0), "200m": (18.0, 35.0),
     "400m": (45.0, 75.0), "800m": (100.0, 240.0), "1600m": (210.0, 660.0),  # 3:30–11:00 (allow sub-4 mile)
     "3200m": (480.0, 1200.0),
 }
@@ -139,6 +152,10 @@ def _event_label_to_slug(label: str) -> str | None:
         return None
     # Strip parenthetical suffix (e.g. " (12 lb)", " (1.6 kg)", " (39\")" ) so other schools' labels match
     key = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
+    # Implements: "Shot Put- 4kg", "Shot Put- 8lb", "Discus- 1kg"
+    key = re.sub(r"\s*-\s*\d+(\.\d+)?\s*(kg|lb)\s*$", "", key, flags=re.I).strip()
+    # "100 Meters" / "200 Meters" (Angular sometimes spells out full word)
+    key = re.sub(r"\b(\d+)\s*meters\b", r"\1m", key)
     if key in EVENT_TO_SLUG:
         return EVENT_TO_SLUG[key]
     # Try without " meters" / "m " suffix
@@ -222,10 +239,13 @@ def _parse_distance_to_meters(s: str, slug: str | None = None) -> float | None:
 
 
 def _parse_grade(text: str) -> int | None:
-    """Parse grade to 9–12 or None. Handles Sr, Jr, Soph, Fr, 10, etc."""
+    """Parse grade to 7–12 or None (MS/HS). Handles 8th Grade, Sr, Jr, Soph, Fr, 10, etc."""
     if not text:
         return None
     t = text.strip().lower()
+    # Normalize "8th grade" → "8" (caller may strip "th grade" already)
+    t = re.sub(r"\b(\d+)(st|nd|rd|th)\s*grade\b", r"\1", t)
+    t = t.replace("th grade", "").replace("st grade", "").replace("nd grade", "").replace("rd grade", "").strip()
     if t in ("sr", "12", "senior"):
         return 12
     if t in ("jr", "11", "junior"):
@@ -234,9 +254,13 @@ def _parse_grade(text: str) -> int | None:
         return 10
     if t in ("fr", "9", "freshman"):
         return 9
+    if t in ("8", "8th", "ms", "middle"):
+        return 8
+    if t in ("7", "7th"):
+        return 7
     try:
         g = int(t)
-        if 9 <= g <= 12:
+        if 7 <= g <= 12:
             return g
     except ValueError:
         pass
@@ -270,7 +294,7 @@ def _parse_date_cell(text: str):
     return None
 
 
-def _parse_relay_meet_date(cell, default_year: int = 2025):
+def _parse_relay_meet_date(cell, default_year: int = 2026):
     """
     Parse relay table meet cell: contains <a>Meet Name</a><br>Weekday, Mon DD (or space-separated).
     Returns (meet_name, (year, month, day) or None). Uses default_year for the date.
@@ -332,8 +356,8 @@ def _parse_athletic_net_relays(soup, gender: str):
             break
     if not section_heading:
         return athletes
-    # Infer season year from page (e.g. h2 "2025 Event Progress")
-    default_year = 2025
+    # Infer season year from page (e.g. h2 "2026 Event Progress")
+    default_year = 2026
     for el in soup.find_all(["h2", "h3"]):
         txt = (el.get_text() or "") or ""
         ym = re.search(r"\b(20\d{2})\b", txt)
@@ -452,6 +476,60 @@ def _result_column_index(table) -> int:
     return 1
 
 
+def _tables_for_event_header(event_header):
+    """Collect <table> nodes tied to this event-header (same section until the next event-header)."""
+    tables = []
+    t = event_header.find_next("table")
+    while t:
+        prev_eh = t.find_previous(
+            "div",
+            class_=lambda c: c and "event-header" in (c or "").split(),
+        )
+        if prev_eh != event_header:
+            break
+        tables.append(t)
+        t = t.find_next("table")
+    return tables
+
+
+def _pick_table_for_event(tables):
+    """
+    athletic.net often places a 3-col Season/Grade/Best summary before the per-meet marks table.
+    Prefer the marks table so we get meet dates (required for season filtering).
+    """
+    for t in tables:
+        if _is_marks_table(t):
+            return t
+    for t in tables:
+        if _is_summary_best_table(t):
+            return t
+    return tables[0] if tables else None
+
+
+def _dedupe_event_marks(events_marks: list) -> list:
+    """
+    athletic.net repeats event headers (marks table + summary). Same mark can appear twice;
+    keep the row with a meet name / non-placeholder date when possible.
+    """
+    best = {}
+    for tup in events_marks:
+        slug = tup[0]
+        val = float(tup[1])
+        key = (slug, round(val, 4))
+        d = tup[2] if len(tup) > 2 else None
+        mn = tup[3] if len(tup) > 3 else None
+
+        def score(item):
+            t_d = item[2] if len(item) > 2 else None
+            t_mn = item[3] if len(item) > 3 else None
+            ph = t_d == SEASON_MARK_MIN.replace(month=4, day=1) and not t_mn
+            return (0 if ph else 1, 1 if t_mn else 0, t_d or date.min)
+
+        if key not in best or score(tup) > score(best[key]):
+            best[key] = tup
+    return list(best.values())
+
+
 def _parse_athletic_net_angular(soup):
     """
     Parse athletic.net full-season team page: one div.athlete per athlete,
@@ -471,7 +549,7 @@ def _parse_athletic_net_angular(soup):
             continue
         small = header.find("small")
         grade_text = (small.get_text(strip=True) if small else "") or ""
-        grade = _parse_grade(grade_text.replace("th Grade", "").replace("st", "").replace("nd", "").replace("rd", "").strip())
+        grade = _parse_grade(grade_text)
         events_marks = []
         event_headers_list = block.find_all("div", class_=lambda c: c and "event-header" in (c or "").split())
         for idx, event_header in enumerate(event_headers_list):
@@ -480,29 +558,21 @@ def _parse_athletic_net_angular(soup):
             slug = _event_label_to_slug(event_label)
             if not slug:
                 continue
-            # Use a table for this event: first table after this header with prev_h == event_header (marks or summary).
-            # Try several candidates so other schools with multiple tables (e.g. summary + marks) still match.
-            table = None
-            candidate = event_header.find_next("table")
-            for _ in range(6):
-                if not candidate or not candidate.find("tbody"):
-                    break
-                prev_h = candidate.find_previous("div", class_=lambda c: c and "event-header" in (c or "").split())
-                if prev_h == event_header:
-                    if _is_marks_table(candidate):
-                        table = candidate
-                        break
-                    if _is_summary_best_table(candidate):
-                        table = candidate
-                        break
-                candidate = candidate.find_next("table")
+            # Prefer per-meet marks table over Season/Grade/Best summary (summary has no meet dates).
+            section_tables = _tables_for_event_header(event_header)
+            table = _pick_table_for_event(section_tables)
             if not table:
                 tables_in_block = [
-                    t for t in block.find_all("table")
+                    t
+                    for t in block.find_all("table")
                     if t.find("tbody") and (_is_marks_table(t) or _is_summary_best_table(t))
                 ]
                 if idx < len(tables_in_block):
                     table = tables_in_block[idx]
+                    if table and _is_summary_best_table(table):
+                        alt = [x for x in tables_in_block if _is_marks_table(x)]
+                        if alt:
+                            table = alt[0]
             if not table:
                 continue
             tbody = table.find("tbody")
@@ -529,20 +599,31 @@ def _parse_athletic_net_angular(soup):
                     lo, hi = TIME_RANGE_SEC[slug]
                     if value < lo or value > hi:
                         continue
-                date_idx = 4 if len(cells) >= 6 else 2
-                meet_idx = 5 if len(cells) >= 6 else 3
-                date_tup = None
-                if len(cells) > date_idx:
-                    date_tup = _parse_date_cell((cells[date_idx].get_text() or "").strip())
-                mark_date = datetime(*date_tup).date() if date_tup else None
-                meet_name = None
-                if len(cells) > meet_idx:
-                    meet_cell = cells[meet_idx]
-                    link = meet_cell.find("a")
-                    meet_name = (link.get_text() or meet_cell.get_text() or "").strip() or None
+                if _is_summary_best_table(table):
+                    season_text = (cells[0].get_text() or "").strip() if len(cells) > 0 else ""
+                    y_m = re.search(r"\b(20\d{2})\b", season_text)
+                    if not y_m:
+                        continue
+                    season_year = int(y_m.group(1))
+                    if season_year != SEASON_MARK_MIN.year:
+                        continue
+                    mark_date = date(season_year, 4, 1)
+                    meet_name = None
+                else:
+                    date_idx = 4 if len(cells) >= 6 else 2
+                    meet_idx = 5 if len(cells) >= 6 else 3
+                    date_tup = None
+                    if len(cells) > date_idx:
+                        date_tup = _parse_date_cell((cells[date_idx].get_text() or "").strip())
+                    mark_date = datetime(*date_tup).date() if date_tup else None
+                    meet_name = None
+                    if len(cells) > meet_idx:
+                        meet_cell = cells[meet_idx]
+                        link = meet_cell.find("a")
+                        meet_name = (link.get_text() or meet_cell.get_text() or "").strip() or None
                 events_marks.append((slug, value, mark_date, meet_name))
         if events_marks:
-            athletes.append((name, grade, events_marks))
+            athletes.append((name, grade, _dedupe_event_marks(events_marks)))
     return athletes
 
 
@@ -663,6 +744,8 @@ def upsert_athletes_marks(conn, school_id: int, gender: str, athletes: list):
                     max_m = DISTANCE_MAX_METERS.get(event_slug)
                     if max_m is not None and float(value) > max_m:
                         continue
+                if not _mark_in_leaderboard_season(mark_date):
+                    continue
                 event_id = ev[0]
                 cur.execute(
                     """INSERT INTO marks (athlete_id, event_id, value, mark_date, meet_name)
