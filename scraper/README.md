@@ -95,3 +95,14 @@ This truncates `marks` and `athletes` and restarts their sequences. Conferences,
 ## Full scrape (with DB)
 
 `python scraper/run.py` uses `requests` only; athletic.net returns the Angular shell, so no athlete data is parsed. To populate from live data, use `fetch_rendered_html.py` for each school/year/gender (or run Playwright inside the scraper). Then use `load_fixture.py` to push saved HTML into the DB. Rate limit: 12 s between school requests when fetching.
+
+## Nightly CI refresh
+
+The GitHub Actions workflow runs:
+
+`python scraper/sync_conference.py --year 2026 --conference-id 1 --no-save-fixtures`
+
+Notes:
+- Uses Playwright Chromium in headless mode.
+- Uses `DATABASE_URL` from GitHub Actions secrets.
+- `--no-save-fixtures` avoids storing HTML artifacts in CI.

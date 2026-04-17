@@ -48,3 +48,10 @@ Athletic.net’s team summary is JS-rendered, so:
 
 6. **New season (drop last year’s marks from Neon):**  
    The leaderboard reads every row in `marks`, so last season’s dated performances stay until removed. Before loading the new year, run `python scraper/clear_marks_before_year.py --year 2026` (or `psql $DATABASE_URL -f migrations/006_delete_marks_before_2026.sql`), then `python scraper/sync_conference.py --year 2026` to refill. Rows with no `mark_date` are left unchanged.
+
+## Nightly automation
+
+- Workflow: `.github/workflows/nightly-refresh.yml`
+- Schedule: `0 8 * * *` (UTC). This targets ~2:00 AM Central in standard time.
+- Manual run: GitHub Actions -> Nightly Refresh -> Run workflow.
+- Required secret: `DATABASE_URL`.
