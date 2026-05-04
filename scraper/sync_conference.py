@@ -58,6 +58,11 @@ def main():
         print("Install Playwright: pip install playwright && python -m playwright install chromium")
         sys.exit(1)
 
+    try:
+        import psycopg2
+    except ImportError:
+        psycopg2 = None
+
     from run import fetch_schools, parse_team_summary, upsert_athletes_marks, get_db, RATE_LIMIT_SEC
     from fetch_rendered_html import fetch_one, FIXTURES_DIR
 
@@ -85,14 +90,15 @@ def main():
     os.makedirs(FIXTURES_DIR, exist_ok=True)
     url_tpl = "https://www.athletic.net/team/{team_id}/track-and-field-outdoor/{year}/team-summary"
 
-    conn = get_db()
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.set_extra_http_headers({"User-Agent": "ConferenceLeaderboard/1.0 (school use)"})
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ua_headers = {"User-Agent": "ConferenceLeaderboard/1.0 (school use)"}
 
-            for i, (school_id, team_id, name) in enumerate(real_schools):
+        for i, (school_id, team_id, name) in enumerate(real_schools):
+            page = browser.new_page()
+            page.set_extra_http_headers(ua_headers)
+            saw_cloudflare = False
+            try:
                 url = url_tpl.format(team_id=team_id, year=args.year)
                 print(f"[{i + 1}/{len(real_schools)}] {name} (team {team_id}) ...")
 
@@ -112,35 +118,65 @@ def main():
                     except Exception as e:
                         print(f"  Warning: {view} failed: {e}")
                         html_by_view[view] = ""
+                        msg = str(e)
+                        if isinstance(e, RuntimeError) and "Cloudflare" in msg:
+                            saw_cloudflare = True
+                        elif "Attention Required" in msg or "Just a moment" in msg:
+                            saw_cloudflare = True
+            finally:
+                page.close()
 
-                steps = (
-                    [("men", html_by_view.get("men", ""), "men"), ("relays (men)", html_by_view.get("relays", ""), "men")]
-                    if gender == "men"
-                    else [("women", html_by_view.get("women", ""), "women"), ("relays (women)", html_by_view.get("relays", ""), "women")]
-                    if gender == "women"
-                    else [
-                        ("men", html_by_view.get("men", ""), "men"),
-                        ("women", html_by_view.get("women", ""), "women"),
-                        ("relays (men)", html_by_view.get("relays", ""), "men"),
-                        ("relays (women)", html_by_view.get("relays", ""), "women"),
-                    ]
-                )
+            # Fresh DB connection per school so Neon does not close an idle socket during long scrapes.
+            steps = (
+                [("men", html_by_view.get("men", ""), "men"), ("relays (men)", html_by_view.get("relays", ""), "men")]
+                if gender == "men"
+                else [("women", html_by_view.get("women", ""), "women"), ("relays (women)", html_by_view.get("relays", ""), "women")]
+                if gender == "women"
+                else [
+                    ("men", html_by_view.get("men", ""), "men"),
+                    ("women", html_by_view.get("women", ""), "women"),
+                    ("relays (men)", html_by_view.get("relays", ""), "men"),
+                    ("relays (women)", html_by_view.get("relays", ""), "women"),
+                ]
+            )
+
+            def _run_upserts(connection):
                 for label, html, g in steps:
                     if not html:
                         continue
                     athletes = parse_team_summary(html, school_id, g)
                     if athletes:
-                        upsert_athletes_marks(conn, school_id, g, athletes)
+                        upsert_athletes_marks(connection, school_id, g, athletes)
                         print(f"  {label}: {len(athletes)} athletes")
 
-                if i < len(real_schools) - 1:
-                    time.sleep(RATE_LIMIT_SEC)
+            db_conn = get_db()
+            try:
+                try:
+                    _run_upserts(db_conn)
+                except Exception as e:
+                    if psycopg2 is not None and isinstance(e, psycopg2.OperationalError):
+                        try:
+                            db_conn.close()
+                        except Exception:
+                            pass
+                        db_conn = get_db()
+                        _run_upserts(db_conn)
+                    else:
+                        raise
+            finally:
+                db_conn.close()
 
-            browser.close()
+            if i < len(real_schools) - 1:
+                pause = RATE_LIMIT_SEC
+                if saw_cloudflare:
+                    extra = 45
+                    print(f"  Pausing {extra}s extra after Cloudflare before the next school.")
+                    pause += extra
+                time.sleep(pause)
 
-        print("Done.")
-    finally:
-        conn.close()
+        browser.close()
+
+    print("Done.")
 
 
 if __name__ == "__main__":
